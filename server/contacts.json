@@ -1,4 +1,6 @@
 {
-  "918458955735": "Harshit Dev",
-  "919752165778": "Shubham"
+  "918458955735": {
+    "name": "harsh",
+    "user_defined": true
+  }
 }

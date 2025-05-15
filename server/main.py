@@ -238,14 +238,14 @@ async def receive_webhook(request: Request):
         message_data = whatsapp_service.parse_webhook_payload(payload)
         
         if message_data:
-            # Emit to connected clients
+            # Emit the ORIGINAL payload structure so frontend parsing works
+            # Frontend will handle contact names from its local storage
             await sio.emit('newMessage', payload)
             
             # Process with auto-reply MCP if needed
             # Note: This would need additional configuration for auto-reply settings
             # For now, we'll just log and emit the message
-            contact_name = message_data.get('contact_name', message_data['from'])
-            logger.info(f"Message from {contact_name} ({message_data['from']}): {message_data['text']}")
+            logger.info(f"Message from {message_data['from']}: {message_data['text']}")
             
             # Store the incoming message
             await vector_service.add_message(
@@ -261,7 +261,7 @@ async def receive_webhook(request: Request):
             # Handle meeting requests comprehensively
             meeting_result = await gemini_service.handle_meeting_request(
                 message=message_data['text'],
-                contact_name=contact_name,
+                contact_name=message_data['from'],  # Just use phone number, frontend has local names
                 phone_number=message_data['from']
             )
             
@@ -271,7 +271,7 @@ async def receive_webhook(request: Request):
                 # Emit to UI
                 await sio.emit('meeting_confirmed', {
                     'from': message_data['from'],
-                    'contact_name': contact_name,
+                    'contact_name': message_data['from'],  # Just phone number
                     'message': meeting_result.get("response"),
                     'meeting_info': meeting_result.get("meeting_info"),
                     'timestamp': datetime.now().isoformat()

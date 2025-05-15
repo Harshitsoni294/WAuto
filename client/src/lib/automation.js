@@ -16,13 +16,24 @@ export async function handleWebhookPayload(payload) {
     const text = fromMsg.text?.body || fromMsg.button?.text || '[non-text message]'
     const timestamp = Number(fromMsg.timestamp) * 1000 || Date.now()
 
-    // Try to get contact name from webhook (client-side only; no server alias lookup)
-    let contactName = from
-    if (contacts?.[0]?.profile?.name) {
-      contactName = contacts[0].profile.name
-    }
+    // Get webhook name for NEW contacts only
+    const webhookName = contacts?.[0]?.profile?.name || null
 
     const store = useStore.getState()
+    
+    // Check if we already have this contact with a custom name
+    const existingContact = store.contacts.find(c => c.id === from)
+    
+    // ONLY use webhook name if this is a NEW contact (no existing custom name)
+    let contactName = from // default to phone number
+    if (existingContact?.name) {
+      // Use existing custom name (never overwrite with webhook name)
+      contactName = existingContact.name
+    } else if (webhookName) {
+      // New contact: use webhook name as initial name
+      contactName = webhookName
+    }
+
     store.upsertContact(from, { id: from, name: contactName, lastMessage: text, timestamp })
     store.addMessage(from, { sender: 'them', text, timestamp })
     store.setActiveChatId(from)

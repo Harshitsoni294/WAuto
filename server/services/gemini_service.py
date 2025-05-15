@@ -7,11 +7,37 @@ from config import settings
 if settings.GEMINI_API_KEY:
     genai.configure(api_key=settings.GEMINI_API_KEY)
 
+# Create a small compatibility shim named `client` that exposes
+# `client.models.generate_content(model=..., contents=[prompt])` so the
+# rest of the code can call the strict interface requested. The installed
+# `google.generativeai` in this environment doesn't expose `Client`, so
+# we delegate to `genai.GenerativeModel('gemini-2.5-flash')` under the hood.
+class _ModelsShim:
+    def generate_content(self, model, contents):
+        # Ignore any incoming model name and enforce the exact model required.
+        model_name = "gemini-2.5-flash"
+        # Accept either a single string or a list of contents; take the first prompt.
+        prompt = contents[0] if isinstance(contents, (list, tuple)) and len(contents) > 0 else contents
+        # Use GenerativeModel as the installed genai exposes it.
+        gen_model = genai.GenerativeModel(model_name)
+        return gen_model.generate_content(prompt)
+
+
+class _ClientShim:
+    def __init__(self):
+        self.models = _ModelsShim()
+
+
+client = _ClientShim()
+
 logger = logging.getLogger(__name__)
 
 class GeminiService:
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        # The older code created a GenerativeModel with an exp model name.
+        # We now use the shared `client` and always request the exact
+        # model "gemini-2.5-flash" when generating content.
+        self.model = None
         # Prefer configured embedding model, fallback to a widely available default
         try:
             from config import settings
@@ -22,11 +48,79 @@ class GeminiService:
     async def generate_response(self, prompt: str) -> str:
         """Generate response using Gemini 2.5 Flash"""
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            # Log which model we're requesting (helps debug unexpected model usage)
+            logger.debug("Requesting Gemini model: gemini-2.5-flash")
+
+            # Strict call format required by the repo rules.
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[prompt],
+            )
+
+            # Attempt to extract a human-readable text from the response
+            # using a few common shapes returned by genai clients.
+            # Prefer `text` attribute if present.
+            if hasattr(response, 'text') and response.text:
+                return response.text
+
+            # Some client versions include an `output` structure
+            # with nested content pieces.
+            try:
+                out = getattr(response, 'output', None) or response.get('output') if isinstance(response, dict) else None
+                if out:
+                    # output is often a list of items
+                    first = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
+                    # content could be under 'content' with list of dicts
+                    content = None
+                    if isinstance(first, dict):
+                        content = first.get('content') or first.get('candidates')
+                    if isinstance(content, (list, tuple)) and len(content) > 0:
+                        c0 = content[0]
+                        # try common keys
+                        for key in ('text', 'content', 'output_text'):
+                            if isinstance(c0, dict) and key in c0 and c0[key]:
+                                return c0[key]
+
+            except Exception:
+                pass
+
+            # Fallback: if response is a dict-like and has 'candidates' or 'output_text'
+            if isinstance(response, dict):
+                # google generative ai sometimes returns {'candidates': [{'output': '...'}]}
+                cand = response.get('candidates') or response.get('outputs')
+                if isinstance(cand, (list, tuple)) and len(cand) > 0:
+                    first = cand[0]
+                    if isinstance(first, dict):
+                        for key in ('text', 'output', 'content', 'message'):
+                            if key in first and first[key]:
+                                return first[key]
+                if 'output_text' in response and response['output_text']:
+                    return response['output_text']
+
+            # As a last resort, coerce the response to string
+            return str(response)
         except Exception as e:
-            logger.error(f"Gemini generation error: {e}")
-            raise Exception(f"Failed to generate response: {str(e)}")
+            # Log full exception for diagnostics
+            logger.exception("Gemini generation failed")
+
+            msg = str(e)
+            # Detect 429/quota errors and return a safe fallback so webhooks don't fail
+            if '429' in msg or 'quota' in msg.lower() or 'exceeded' in msg.lower():
+                logger.warning("Gemini quota/rate limit detected. Returning fallback reply to avoid crashing webhooks.")
+                # A concise fallback user-visible reply; you can customize this message
+                fallback = "Sorry, I'm temporarily unable to generate replies (API quota). Please try again in a few minutes."
+                # If developer mode is enabled, raise the error so it can be investigated interactively
+                try:
+                    if getattr(settings, 'DEBUG', False):
+                        raise
+                except Exception:
+                    # If DEBUG, raising above will propagate; if not, return fallback
+                    return fallback
+
+                return fallback
+
+            # For non-quota errors, re-raise as before so callers can decide how to handle them
+            raise Exception(f"Failed to generate response: {msg}")
     
     async def create_embeddings(self, text: str) -> List[float]:
         """Create embeddings for text using Gemini embedding model"""

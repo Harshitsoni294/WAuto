@@ -70,6 +70,7 @@ class WhatsAppService:
             
             # Update contact name using contact service
             contact_name = contact_service.update_contact_from_webhook(from_number, webhook_name)
+            logger.info(f"[WHATSAPP_SERVICE] Webhook name: {webhook_name}, Final contact_name returned: {contact_name}")
             
             # Extract message content
             text_content = None

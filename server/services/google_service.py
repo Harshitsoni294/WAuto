@@ -270,14 +270,19 @@ class GoogleService:
         """Create a business meeting - try real Google Meet first, fallback to professional link"""
         try:
             from datetime import datetime, timedelta
+            import pytz
             
-            # Parse date and time
+            # Parse date and time - assume local timezone (Indian Standard Time for you)
             meeting_datetime = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
-            end_datetime = meeting_datetime + timedelta(minutes=duration_minutes)
             
-            # Format for Google Calendar API (RFC3339)
-            start_rfc3339 = meeting_datetime.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
-            end_rfc3339 = end_datetime.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+            # Set to IST timezone (UTC+5:30)
+            ist = pytz.timezone('Asia/Kolkata')
+            meeting_datetime_ist = ist.localize(meeting_datetime)
+            end_datetime_ist = meeting_datetime_ist + timedelta(minutes=duration_minutes)
+            
+            # Format for Google Calendar API (RFC3339) with timezone
+            start_rfc3339 = meeting_datetime_ist.isoformat()
+            end_rfc3339 = end_datetime_ist.isoformat()
             
             # Try to create REAL Google Meet first
             tokens = self.get_saved_tokens()
@@ -316,8 +321,8 @@ class GoogleService:
                 "event_id": f"evt_{meeting_hash}",
                 "meet_link": meet_link,
                 "title": title,
-                "start_datetime": meeting_datetime.isoformat(),
-                "end_datetime": end_datetime.isoformat(),
+                "start_datetime": meeting_datetime_ist.isoformat(),
+                "end_datetime": end_datetime_ist.isoformat(),
                 "description": description,
                 "status": "instant_meeting",
                 "calendar_note": "Click the link to start an instant Google Meet",
