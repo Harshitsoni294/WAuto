@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from secrets import token_urlsafe
 import socketio
 import uvicorn
 import logging
@@ -426,12 +427,32 @@ async def search_messages(request: SearchMessagesRequest):
 
 # Google Auth endpoints
 @app.get("/auth/google")
-async def google_auth():
-    """Get Google OAuth URL"""
+async def google_auth(next: str = Query("/app")):
+    """Initiate Google OAuth. Accept optional `next` (path or full URL) then redirect to Google.
+
+    Security: generate a random state, set it in a secure HttpOnly cookie and pass it to Google.
+    The `next` value is stored in a separate cookie (validated) and used on callback.
+    """
     try:
-        auth_url = google_service.get_auth_url()
-        # Redirect the browser directly to Google's consent screen
-        return RedirectResponse(auth_url)
+        # Validate `next` - allow relative paths or URLs that start with CLIENT_APP_URL
+        next_target = str(next or "/app")
+        if next_target.startswith("http://") or next_target.startswith("https://"):
+            # only allow if origin matches configured client URL
+            if not next_target.startswith(settings.CLIENT_APP_URL):
+                next_target = "/app"
+        elif not next_target.startswith("/"):
+            next_target = "/app"
+
+        state = token_urlsafe(24)
+        auth_url = google_service.get_auth_url(state=state)
+
+        resp = RedirectResponse(auth_url)
+        # secure cookie only when not in debug (local dev)
+        secure_flag = not getattr(settings, 'DEBUG', False)
+        resp.set_cookie("oauth_state", state, httponly=True, secure=secure_flag, samesite='lax', max_age=600)
+        # store desired client redirect target
+        resp.set_cookie("oauth_next", next_target, httponly=False, secure=secure_flag, samesite='lax', max_age=600)
+        return resp
     except Exception as e:
         logger.error(f"Error getting Google auth URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -448,21 +469,37 @@ async def google_connect():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/auth/google/callback")
-async def google_auth_callback(code: str):
-    """Handle Google OAuth callback"""
+async def google_auth_callback(request: Request, code: str = Query(...), state: Optional[str] = Query(None)):
+    """Handle Google OAuth callback: verify state cookie, exchange tokens, save and redirect to client target."""
     try:
+        cookie_state = request.cookies.get('oauth_state')
+        if not state or not cookie_state or state != cookie_state:
+            logger.error("OAuth state mismatch or missing")
+            raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
         tokens = google_service.exchange_code_for_tokens(code)
         # Persist tokens for server-side scheduled actions
         try:
             google_service.save_tokens(tokens)
         except Exception as e:
             logger.error(f"Failed to persist Google tokens: {e}")
-        # Redirect user back to the client application (dashboard)
-        try:
+
+        # Determine redirect target from cookie (validated earlier when set)
+        oauth_next = request.cookies.get('oauth_next') or '/app'
+        if oauth_next.startswith('http://') or oauth_next.startswith('https://'):
+            redirect_target = oauth_next
+        elif oauth_next.startswith('/'):
+            redirect_target = f"{settings.CLIENT_APP_URL}{oauth_next}"
+        else:
             redirect_target = f"{settings.CLIENT_APP_URL}/app"
-        except Exception:
-            redirect_target = "/"
-        return RedirectResponse(redirect_target)
+
+        resp = RedirectResponse(redirect_target)
+        # clear cookies
+        resp.delete_cookie('oauth_state')
+        resp.delete_cookie('oauth_next')
+        return resp
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in Google auth callback: {e}")
         raise HTTPException(status_code=500, detail=str(e))

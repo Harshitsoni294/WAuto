@@ -34,18 +34,18 @@ class GoogleService:
             }
         }
     
-    def get_auth_url(self) -> str:
-        """Get Google OAuth authorization URL"""
+    def get_auth_url(self, state: str | None = None) -> str:
+        """Get Google OAuth authorization URL. Accept optional `state` for CSRF/return-target handling."""
         try:
             flow = Flow.from_client_config(
                 self._client_config(),
                 scopes=self.scopes,
                 redirect_uri=settings.GOOGLE_REDIRECT_URI
             )
-            
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true'
+                include_granted_scopes='true',
+                state=state
             )
             
             return auth_url
