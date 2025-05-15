@@ -30,7 +30,7 @@ class GoogleService:
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
                 "auth_uri": self._base_auth_uri,
                 "token_uri": self._token_uri,
-                "redirect_uris": ["http://localhost:4000/auth/google/callback"],
+                "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
             }
         }
     
@@ -40,7 +40,7 @@ class GoogleService:
             flow = Flow.from_client_config(
                 self._client_config(),
                 scopes=self.scopes,
-                redirect_uri="http://localhost:4000/auth/google/callback"
+                redirect_uri=settings.GOOGLE_REDIRECT_URI
             )
             
             auth_url, _ = flow.authorization_url(
@@ -59,7 +59,7 @@ class GoogleService:
             flow = Flow.from_client_config(
                 self._client_config(),
                 scopes=self.scopes,
-                redirect_uri="http://localhost:4000/auth/google/callback"
+                redirect_uri=settings.GOOGLE_REDIRECT_URI
             )
             
             flow.fetch_token(code=code)
@@ -117,17 +117,17 @@ class GoogleService:
             # Build Calendar API service
             service = build('calendar', 'v3', credentials=credentials)
             
-            # Prepare event with Google Meet (use configured timezone)
+            # Prepare event with Google Meet
             event = {
                 'summary': event_details.get('summary', 'Meeting'),
                 'description': event_details.get('description', ''),
                 'start': {
                     'dateTime': event_details.get('start'),
-                    'timeZone': settings.TIMEZONE,
+                    'timeZone': 'UTC',
                 },
                 'end': {
                     'dateTime': event_details.get('end'),
-                    'timeZone': settings.TIMEZONE,
+                    'timeZone': 'UTC',
                 },
                 'attendees': event_details.get('attendees', []),
                 'conferenceData': {
@@ -150,15 +150,7 @@ class GoogleService:
             # Extract meeting link
             meeting_link = None
             if 'conferenceData' in created_event:
-                entry_points = created_event['conferenceData'].get('entryPoints') or []
-                for ep in entry_points:
-                    if ep.get('entryPointType') == 'video' and ep.get('uri'):
-                        meeting_link = ep.get('uri')
-                        break
-                if not meeting_link:
-                    meeting_link = created_event['conferenceData'].get('entryPoints', [{}])[0].get('uri')
-            if not meeting_link:
-                meeting_link = created_event.get('hangoutLink')
+                meeting_link = created_event['conferenceData'].get('entryPoints', [{}])[0].get('uri')
             
             return {
                 'event_id': created_event['id'],
@@ -207,17 +199,17 @@ class GoogleService:
             # Build Calendar service
             service = build('calendar', 'v3', credentials=creds)
             
-            # Create event with Google Meet (use configured timezone)
+            # Create event with Google Meet
             event = {
                 'summary': title,
                 'description': description,
                 'start': {
                     'dateTime': start_datetime,
-                    'timeZone': settings.TIMEZONE,
+                    'timeZone': 'UTC',
                 },
                 'end': {
                     'dateTime': end_datetime,
-                    'timeZone': settings.TIMEZONE,
+                    'timeZone': 'UTC',
                 },
                 'conferenceData': {
                     'createRequest': {
@@ -279,16 +271,13 @@ class GoogleService:
         try:
             from datetime import datetime, timedelta
             
-            # Parse date and time in configured timezone
-            import pytz
-            local_tz = pytz.timezone(settings.TIMEZONE)
-            meeting_datetime_naive = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
-            meeting_datetime = local_tz.localize(meeting_datetime_naive)
+            # Parse date and time
+            meeting_datetime = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
             end_datetime = meeting_datetime + timedelta(minutes=duration_minutes)
             
-            # Format for Google Calendar API (RFC3339 with offset)
-            start_rfc3339 = meeting_datetime.isoformat()
-            end_rfc3339 = end_datetime.isoformat()
+            # Format for Google Calendar API (RFC3339)
+            start_rfc3339 = meeting_datetime.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+            end_rfc3339 = end_datetime.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
             
             # Try to create REAL Google Meet first
             tokens = self.get_saved_tokens()

@@ -183,7 +183,15 @@ async def create_embedding(request: EmbeddingRequest):
 async def create_google_meet(request: GoogleMeetRequest):
     """Create a Google Meet meeting"""
     try:
-        result = await google_service.create_meeting(request.tokens.dict(), request.event.dict())
+        tokens = None
+        if getattr(request, 'tokens', None):
+            tokens = request.tokens.dict()
+        else:
+            tokens = google_service.get_saved_tokens()
+            if not tokens:
+                raise Exception("No Google tokens available. Please connect Google first.")
+
+        result = await google_service.create_meeting(tokens, request.event.dict())
         return {"meetLink": result["meeting_link"], **result}
     except Exception as e:
         logger.error(f"Error creating Google Meet: {e}")
@@ -425,6 +433,16 @@ async def google_auth():
         return {"auth_url": auth_url}
     except Exception as e:
         logger.error(f"Error getting Google auth URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/google/connect")
+async def google_connect():
+    """Convenience endpoint that returns the OAuth URL for the client button to open"""
+    try:
+        auth_url = google_service.get_auth_url()
+        return {"auth_url": auth_url}
+    except Exception as e:
+        logger.error(f"Error generating Google connect URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/auth/google/callback")

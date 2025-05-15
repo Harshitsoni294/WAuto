@@ -28,7 +28,7 @@ class GoogleMeetEvent(BaseModel):
     attendees: Optional[List[str]] = []
 
 class GoogleMeetRequest(BaseModel):
-    tokens: GoogleTokens
+    tokens: Optional[GoogleTokens] = None
     event: GoogleMeetEvent
 
 class MCPSendRequest(BaseModel):

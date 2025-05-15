@@ -42,10 +42,18 @@ export async function handleWebhookPayload(payload) {
     .map(m => `${m.sender === 'me' ? 'ME' : 'THEM'} [${new Date(m.timestamp).toLocaleString()}]: ${m.text}`)
     .join('\n')
   const business = store.businessDescription || ''
-  const prompt = `You are a professional assistant for this business.\nBusiness: "${business}"\nConversation history with this contact (oldest to newest):\n${convo}\nThe client just wrote: "${text}"\nDraft a concise, polite WhatsApp reply suitable to send directly.`
+  const prompt = `You are a professional WhatsApp assistant for this business.\nBusiness: "${business}"\nConversation history with this contact (oldest to newest):\n${convo}\nThe client just wrote: "${text}"\n\nWrite a natural WhatsApp-style reply in 1–3 sentences (2–4 short lines max).\nCRITICAL OUTPUT RULES:\n- Output ONLY the message to send.\n- No prefaces, no options, no lists, no quotes, no markdown, no backticks.\n- Do not include labels like Option 1/2 or "Here is".\n- Friendly, concise, and professional.\nIf clarification is needed, ask one short question.`
   let reply
   try {
     reply = await api.geminiReply({ prompt })
+    // light normalization: strip code fences and surrounding quotes
+    if (reply) {
+      reply = reply.trim()
+      reply = reply.replace(/^```[a-zA-Z]*\n?|```$/g, '').trim()
+      if ((reply.startsWith('"') && reply.endsWith('"')) || (reply.startsWith("'") && reply.endsWith("'"))) {
+        reply = reply.slice(1, -1).trim()
+      }
+    }
   } catch (e) {
     console.error('Gemini failed, using fallback reply:', e?.response?.data || e.message)
     reply = 'Thanks for your message. We\'ll get back to you shortly.'

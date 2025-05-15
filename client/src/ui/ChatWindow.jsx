@@ -69,8 +69,15 @@ export default function ChatWindow() {
     if (!activeChatId) return
     const latest = messages[messages.length - 1]
     const contextDocs = await retrieveContext({ contactId: activeChatId, text: latest?.text || '' })
-    const prompt = `You are a professional and helpful assistant for this business.\nBusiness description: "${businessDescription}".\nRelevant past messages with this contact:\n${contextDocs.map(d=>`- ${d}`).join('\n')}\nThe client wrote: "${latest?.text}"\nPlease draft a helpful, concise reply for WhatsApp.`
-    const reply = await api.geminiReply({ prompt })
+    const prompt = `You are a professional WhatsApp assistant for this business.\nBusiness: "${businessDescription}"\nRelevant past messages with this contact:\n${contextDocs.map(d=>`- ${d}`).join('\n')}\nThe client just wrote: "${latest?.text}"\n\nWrite a natural WhatsApp-style reply in 1–3 sentences (2–4 short lines max).\nCRITICAL OUTPUT RULES:\n- Output ONLY the message to send.\n- No prefaces, no options, no lists, no quotes, no markdown, no backticks.\n- Do not include labels like Option 1/2 or "Here is".\n- Friendly, concise, and professional.\nIf clarification is needed, ask one short question.`
+    let reply = await api.geminiReply({ prompt })
+    if (reply) {
+      reply = reply.trim()
+      reply = reply.replace(/^```[a-zA-Z]*\n?|```$/g, '').trim()
+      if ((reply.startsWith('"') && reply.endsWith('"')) || (reply.startsWith("'") && reply.endsWith("'"))) {
+        reply = reply.slice(1, -1).trim()
+      }
+    }
     addMessage(activeChatId, { sender: 'me', text: reply, timestamp: Date.now() })
     await sendWhatsApp(activeChatId, reply)
     await addMessageToVectorStore({ contactId: activeChatId, text: reply })

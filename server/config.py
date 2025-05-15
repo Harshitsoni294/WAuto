@@ -63,4 +63,10 @@ class Settings:
 
     CORS_ORIGINS = list(dict.fromkeys(_BASE_CORS + _EXTRA + _PLATFORM_ORIGINS))
 
+    # Public base URL for building OAuth redirects
+    _RAW_BASE = os.getenv("SERVER_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "http://localhost:4000"
+    # Ensure scheme is present and strip trailing slash
+    BASE_URL = (_RAW_BASE if _RAW_BASE.startswith("http") else f"https://{_RAW_BASE}").rstrip("/")
+    GOOGLE_REDIRECT_URI = f"{BASE_URL}/auth/google/callback"
+
 settings = Settings()

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
+import { api } from '../lib/api'
 
 export default function Landing() {
   const navigate = useNavigate()
@@ -9,19 +10,23 @@ export default function Landing() {
   const [phoneNumberId, setPhoneNumberId] = useState('')
   const [businessAccountId, setBusinessAccountId] = useState('')
   const [serverUrl, setServerUrl] = useState(import.meta.env.VITE_SERVER_URL || 'http://localhost:4000')
-  const setGoogleTokens = useStore(s => s.setGoogleTokens)
-  const [accessToken, setAccessToken] = useState('')
-  const [refreshToken, setRefreshToken] = useState('')
-  const [expiryDate, setExpiryDate] = useState('')
+  // Google tokens are handled via server OAuth; no manual inputs
 
   const handleSave = () => {
     setCredentials({ whatsappToken, phoneNumberId, businessAccountId, serverUrl })
-    if (accessToken || refreshToken) {
-      const tokens = { access_token: accessToken, refresh_token: refreshToken }
-      if (expiryDate) tokens.expiry_date = Number(expiryDate)
-      setGoogleTokens(tokens)
-    }
     navigate('/app')
+  }
+
+  const handleGoogleConnect = async () => {
+    try {
+      // Use the configured backend URL; fall back to env
+      const base = serverUrl || import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'
+      // Directly hit the server OAuth endpoint; it will redirect to Google
+      window.open(`${base}/auth/google`, '_blank')
+    } catch (e) {
+      console.error('Google connect error', e)
+      alert('Error starting Google connect flow')
+    }
   }
 
   return (
@@ -51,11 +56,10 @@ export default function Landing() {
         </div>
 
         <div className="bg-gray-50 p-3 rounded space-y-2">
-          <div className="font-semibold">Google Tokens (optional)</div>
-          <div className="text-sm text-gray-600">Open {serverUrl}/auth/google to authenticate. Paste returned tokens here.</div>
-          <input className="w-full border rounded p-2" placeholder="access_token" value={accessToken} onChange={e=>setAccessToken(e.target.value)} />
-          <input className="w-full border rounded p-2" placeholder="refresh_token" value={refreshToken} onChange={e=>setRefreshToken(e.target.value)} />
-          <input className="w-full border rounded p-2" placeholder="expiry_date (ms since epoch)" value={expiryDate} onChange={e=>setExpiryDate(e.target.value)} />
+          <div className="font-semibold">Google Calendar</div>
+          <div className="text-sm text-gray-600">Connect your Google account. Tokens are stored securely on the server.</div>
+          <button type="button" onClick={handleGoogleConnect} className="px-3 py-2 bg-red-600 text-white rounded block mx-auto">Connect with Google</button>
+          <div className="text-xs text-gray-500">If already connected, the server will use saved tokens automatically.</div>
         </div>
 
         <button onClick={handleSave} className="w-full bg-green-600 text-white rounded p-2">Save and Start</button>
