@@ -24,7 +24,8 @@ class Settings:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     
     # WhatsApp Cloud API
-    WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "whatsapp_verify_token")
+    # Support either WHATSAPP_VERIFY_TOKEN or META_VERIFY_TOKEN env names
+    WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN") or os.getenv("META_VERIFY_TOKEN") or "whatsapp_verify_token"
     WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
     WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
     
@@ -68,5 +69,7 @@ class Settings:
     # Ensure scheme is present and strip trailing slash
     BASE_URL = (_RAW_BASE if _RAW_BASE.startswith("http") else f"https://{_RAW_BASE}").rstrip("/")
     GOOGLE_REDIRECT_URI = f"{BASE_URL}/auth/google/callback"
+    # Client application URL to redirect users after OAuth (frontend dev default)
+    CLIENT_APP_URL = os.getenv("CLIENT_APP_URL", "http://localhost:5173").rstrip("/")
 
 settings = Settings()

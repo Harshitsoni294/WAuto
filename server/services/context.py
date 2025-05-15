@@ -154,14 +154,39 @@ class AIAgentContext:
         try:
             import json as _json
             
-            # Build contacts list (phone -> name) and send to Gemini so the LLM
-            # can resolve ambiguous recipient names from the full contacts set.
-            # We pass the display name exactly as stored locally (no lowercasing)
+            # Prefer client-provided contacts/aliases (from `user_context`) so
+            # the frontend's contact list is used by the LLM resolution. If the
+            # client didn't supply contacts, fall back to the server-side store.
             contacts_for_prompt = []
+            phone_to_name = {}
             try:
-                phone_to_name = contact_service.get_all_contacts()  # phone -> name
+                # If the client provided a `contacts` array (each item {id, name}),
+                # convert it to phone->name mapping. Use server normalizer to keep
+                # keys consistent.
+                if isinstance(user_context, dict) and user_context.get('contacts'):
+                    for c in (user_context.get('contacts') or []):
+                        pid = str(c.get('id') or '').strip()
+                        if not pid:
+                            continue
+                        nk = contact_service._normalize_phone(pid)
+                        phone_to_name[nk] = c.get('name') or pid
+
+                # If the client provided `aliases` mapping name->phone, also use it
+                # to populate phone_to_name (client aliases take precedence).
+                if isinstance(user_context, dict) and user_context.get('aliases'):
+                    for name, phone in (user_context.get('aliases') or {}).items():
+                        try:
+                            nk = contact_service._normalize_phone(phone)
+                            # prefer an explicit name from aliases (use the alias key if needed)
+                            phone_to_name[nk] = phone_to_name.get(nk) or (name or phone)
+                        except Exception:
+                            continue
+
+                # If still empty, fall back to server-side contacts
+                if not phone_to_name:
+                    phone_to_name = contact_service.get_all_contacts()  # phone -> name
+
                 seen = set()
-                # Include up to 1000 contacts (can be adjusted). Preserve original display names.
                 for phone, name in list(phone_to_name.items())[:1000]:
                     display_name = name if name else phone
                     pair = (display_name, phone)

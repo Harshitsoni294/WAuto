@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 import socketio
 import uvicorn
 import logging
@@ -430,7 +430,8 @@ async def google_auth():
     """Get Google OAuth URL"""
     try:
         auth_url = google_service.get_auth_url()
-        return {"auth_url": auth_url}
+        # Redirect the browser directly to Google's consent screen
+        return RedirectResponse(auth_url)
     except Exception as e:
         logger.error(f"Error getting Google auth URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -440,7 +441,8 @@ async def google_connect():
     """Convenience endpoint that returns the OAuth URL for the client button to open"""
     try:
         auth_url = google_service.get_auth_url()
-        return {"auth_url": auth_url}
+        # Return a redirect so the client can simply navigate to this endpoint
+        return RedirectResponse(auth_url)
     except Exception as e:
         logger.error(f"Error generating Google connect URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -455,7 +457,12 @@ async def google_auth_callback(code: str):
             google_service.save_tokens(tokens)
         except Exception as e:
             logger.error(f"Failed to persist Google tokens: {e}")
-        return {"tokens": tokens}
+        # Redirect user back to the client application (dashboard)
+        try:
+            redirect_target = f"{settings.CLIENT_APP_URL}/app"
+        except Exception:
+            redirect_target = "/"
+        return RedirectResponse(redirect_target)
     except Exception as e:
         logger.error(f"Error in Google auth callback: {e}")
         raise HTTPException(status_code=500, detail=str(e))
