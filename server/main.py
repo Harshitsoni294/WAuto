@@ -32,9 +32,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Socket.IO setup
+allowed_origins = ["*"] if getattr(settings, "CORS_ALLOW_ALL", False) else settings.CORS_ORIGINS
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=settings.CORS_ORIGINS,
+    cors_allowed_origins=allowed_origins,
     logger=True,
     engineio_logger=True
 )
@@ -58,7 +59,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"] if getattr(settings, "CORS_ALLOW_ALL", False) else settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

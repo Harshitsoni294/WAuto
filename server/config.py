@@ -6,6 +6,14 @@ from dotenv import load_dotenv
 _ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=_ENV_PATH, override=True)
 
+def _normalize_origin(url: str) -> str:
+    """Ensure an origin string includes scheme; return empty if falsy."""
+    if not url:
+        return url
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return f"https://{url}"
+
 class Settings:
     # Server settings
     HOST = "localhost"
@@ -23,8 +31,6 @@ class Settings:
     # Google Calendar/Meet
     GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-    # Time zone for calendar events (IANA tz database name)
-    TIMEZONE = os.getenv("TIMEZONE", "Asia/Kolkata")
     
     # ChromaDB
     CHROMA_PERSIST_DIRECTORY = "./data/chromadb"
@@ -32,14 +38,29 @@ class Settings:
     # Vector Store
     EMBEDDING_MODEL = "models/embedding-001"
     
-    # Cors
-    CORS_ORIGINS = [
+    # CORS configuration
+    # Toggle to allow all origins (safe only for development)
+    CORS_ALLOW_ALL = os.getenv("CORS_ALLOW_ALL", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    # Base allowed origins for local dev
+    _BASE_CORS = [
         "http://localhost:5173",  # Vite dev server
         "http://localhost:5174",  # Vite dev server (alternate port)
         "http://localhost:3000",  # React dev server
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
     ]
+
+    # Extra origins from env (comma-separated)
+    _EXTRA = [o.strip() for o in os.getenv("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
+
+    # Auto-include common platform URLs if provided via env
+    _VERCEL_URL = _normalize_origin(os.getenv("VERCEL_URL", ""))
+    _RENDER_EXTERNAL_URL = _normalize_origin(os.getenv("RENDER_EXTERNAL_URL", ""))
+
+    _PLATFORM_ORIGINS = [o for o in [_VERCEL_URL, _RENDER_EXTERNAL_URL] if o]
+
+    CORS_ORIGINS = list(dict.fromkeys(_BASE_CORS + _EXTRA + _PLATFORM_ORIGINS))
 
 settings = Settings()
