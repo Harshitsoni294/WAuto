@@ -1,0 +1,22 @@
+# Node
+client/node_modules/
+client/dist/
+
+# Python
+server/venv/
+__pycache__/
+*.pyc
+
+# Local data
+server/data/
+server/google_tokens.json
+
+# Env files
+server/.env
+client/.env
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
